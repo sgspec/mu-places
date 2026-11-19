@@ -1,5 +1,5 @@
-// mu-places Worker v1.0.0 — ฐานข้อมูลกลางแผนที่สายมู (Cloudflare Worker + D1)
-// Bindings: DB (D1: mu-places) · Secret: ADMIN_KEY · (ไม่บังคับ) GOOGLE_KEY, REFRESH_DAYS, REFRESH_LIMIT
+// mu-places Worker v1.1.0 — ฐานข้อมูลกลางแผนที่สายมู (Cloudflare Worker + D1)
+// Bindings: DB (D1: mu-places) · Secret: ADMIN_KEY · Var: ALLOWED_ORIGINS · (ไม่บังคับ) GOOGLE_KEY, REFRESH_DAYS, REFRESH_LIMIT
 // Cron: */15 * * * *
 
 const CATS = {
@@ -17,6 +17,33 @@ const CORS = {
 const json = (d, status = 200, h = {}) =>
   new Response(JSON.stringify(d), { status, headers: { 'content-type': 'application/json; charset=utf-8', ...CORS, ...h } });
 
+/* ---------- อนุญาตเฉพาะโดเมนในรายชื่อ (ALLOWED_ORIGINS คั่นด้วย ,  รองรับ *.example.com) ---------- */
+function allowList(env) {
+  return String(env.ALLOWED_ORIGINS || '').split(',').map(x => {
+    let d = x.trim().toLowerCase().replace(/^https?:\/\//, '').replace(/\/.*$/, '');
+    if (!d) return '';
+    const wild = d.startsWith('*.');
+    try { d = new URL('https://' + (wild ? d.slice(2) : d)).hostname; } catch (e) {}   // รองรับโดเมนภาษาไทย
+    return (wild ? '*.' : '') + d;
+  }).filter(Boolean);
+}
+function requestHost(req) {
+  const o = req.headers.get('Origin') || req.headers.get('Referer') || '';
+  try { return new URL(o).hostname.toLowerCase(); } catch (e) { return ''; }
+}
+function hostAllowed(host, list) {
+  if (!host) return false;
+  return list.some(d => d.startsWith('*.') ? (host === d.slice(2) || host.endsWith(d.slice(1))) : (host === d || host === 'www.' + d));
+}
+function withOrigin(res, req) {
+  const o = req.headers.get('Origin');
+  if (!o) return res;
+  const r = new Response(res.body, res);
+  r.headers.set('Access-Control-Allow-Origin', o);
+  r.headers.append('Vary', 'Origin');
+  return r;
+}
+
 const getMeta = (env, k) => env.DB.prepare('SELECT v FROM meta WHERE k = ?').bind(k).first('v');
 const setMeta = (env, k, v) =>
   env.DB.prepare('INSERT INTO meta (k, v) VALUES (?, ?) ON CONFLICT(k) DO UPDATE SET v = excluded.v').bind(k, String(v)).run();
@@ -27,8 +54,13 @@ export default {
     const path = url.pathname.replace(/\/+$/, '') || '/';
     if (req.method === 'OPTIONS') return new Response(null, { headers: CORS });
     try {
-      if (path === '/places' && req.method === 'GET') return await places(env);
-      if (path === '/place' && req.method === 'GET') return await place(env, url.searchParams.get('id') || '', req);
+      if (path === '/places' || path === '/place') {
+        const list = allowList(env);
+        if (list.length && !hostAllowed(requestHost(req), list)) return json({ error: 'forbidden' }, 403);
+        if (req.method !== 'GET') return json({ error: 'method' }, 405);
+        const res = path === '/places' ? await places(env) : await place(env, url.searchParams.get('id') || '', req);
+        return list.length ? withOrigin(res, req) : res;
+      }
 
       if (path.startsWith('/admin/')) {
         if (!env.ADMIN_KEY || req.headers.get('Authorization') !== 'Bearer ' + env.ADMIN_KEY) return json({ error: 'unauthorized' }, 401);
@@ -37,7 +69,7 @@ export default {
         if (path === '/admin/build' && req.method === 'POST') return json(await buildPart(env, (await req.json()).part | 0));
         if (path === '/admin/clear' && req.method === 'POST') return await adminClear(env);
       }
-      if (path === '/') return json({ ok: true, service: 'mu-places', version: '1.0.0' });
+      if (path === '/') return json({ ok: true, service: 'mu-places', version: '1.1.0' });
       return json({ error: 'not found' }, 404);
     } catch (e) {
       return json({ error: String((e && e.message) || e) }, 500);
