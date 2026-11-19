@@ -1,0 +1,14 @@
+name = "mu-places"
+main = "src/worker.js"
+compatibility_date = "2026-11-01"
+workers_dev = true
+
+[[d1_databases]]
+binding = "DB"
+database_name = "mu-places"
+database_id = "ใส่-DATABASE-ID-ตรงนี้"
+
+[triggers]
+crons = ["*/15 * * * *"]
+
+# ADMIN_KEY / GOOGLE_KEY ตั้งเป็น Secret ในหน้า Cloudflare (ห้ามใส่ในไฟล์นี้)
