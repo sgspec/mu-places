@@ -11,4 +11,9 @@ database_id = "19d0420d-ee32-4a4a-95be-d8d62cad4e12"
 [triggers]
 crons = ["*/15 * * * *"]
 
+[vars]
+# โดเมนที่อนุญาตให้ดึงข้อมูล — คั่นด้วย ,  (www. อนุญาตให้อัตโนมัติ / *.โดเมน = ทุก subdomain)
+# เพิ่มเว็บใหม่: ใส่ , แล้วตามด้วยชื่อโดเมน ภายใน " " คู่เดียวกัน
+ALLOWED_ORIGINS = "quirky-powderblue-dogfish-10.hostingersite.com, ตัวอย่าง.com"
+
 # ADMIN_KEY / GOOGLE_KEY ตั้งเป็น Secret ในหน้า Cloudflare (ห้ามใส่ในไฟล์นี้)
